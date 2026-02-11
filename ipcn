@@ -50,8 +50,8 @@ printf '%s\n' "$resp" | jq -r '
   "City: \(.city)",
   "Latitude: \(.latitude)",
   "Longitude: \(.longitude)",
-  "Timezone: \(.timezone.id // \"N/A\")",
-  "ISP: \(.connection.isp // \"N/A\")",
-  "ASN: \(.connection.asn // \"N/A\")",
-  "Organization: \(.connection.org // \"N/A\")"
+  "Timezone: \(.timezone.id // "N/A")",
+  "ISP: \(.connection.isp // "N/A")",
+  "ASN: \(.connection.asn // "N/A")",
+  "Organization: \(.connection.org // "N/A")"
 '
