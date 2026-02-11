@@ -40,6 +40,11 @@ git tag v0.2.5
 git push --tags
 ```
 
+Version note:
+
+- `ipcn -v` will try to read the latest git tag automatically.
+- You can override it by setting `IPCN_VERSION`, e.g. `IPCN_VERSION=v0.2.5 ipcn -v`.
+
 ## Homebrew sync
 
 This repo can auto-sync the formula in `yuxi1989/homebrew-ipcn` when a tag is pushed.

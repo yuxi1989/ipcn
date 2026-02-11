@@ -1,6 +1,30 @@
 #!/usr/bin/env bash
 set -euo pipefail
-VERSION="${IPCN_VERSION:-0.2.5}"
+
+resolve_version() {
+  if [[ -n "${IPCN_VERSION:-}" ]]; then
+    echo "${IPCN_VERSION}"
+    return 0
+  fi
+
+  local script_dir
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+  if command -v git >/dev/null 2>&1; then
+    if git -C "$script_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+      local tag
+      tag="$(git -C "$script_dir" describe --tags --abbrev=0 2>/dev/null || true)"
+      if [[ -n "$tag" ]]; then
+        echo "$tag"
+        return 0
+      fi
+    fi
+  fi
+
+  echo "unknown"
+}
+
+VERSION="$(resolve_version)"
 
 usage() {
   cat <<'USAGE'
