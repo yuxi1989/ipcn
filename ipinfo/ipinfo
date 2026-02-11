@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if ! command -v curl >/dev/null 2>&1; then
+  echo "Error: curl is required." >&2
+  exit 1
+fi
+
+if ! command -v jq >/dev/null 2>&1; then
+  echo "Error: jq is required." >&2
+  exit 1
+fi
+
+usage() {
+  cat <<'USAGE'
+Usage: ipinfo <ip-or-domain>
+
+Examples:
+  ipinfo 8.8.8.8
+  ipinfo example.com
+USAGE
+}
+
+if [[ $# -ne 1 ]]; then
+  usage
+  exit 1
+fi
+
+query="$1"
+
+# ipwho.is supports both IPv4/IPv6 and domain names, and returns ASN fields.
+resp="$(curl -fsSL "https://ipwho.is/${query}")" || {
+  echo "Error: failed to query ipwho.is" >&2
+  exit 1
+}
+
+ok="$(printf '%s' "$resp" | jq -r '.success // false')"
+if [[ "$ok" != "true" ]]; then
+  msg="$(printf '%s' "$resp" | jq -r '.message // "lookup failed"')"
+  echo "Error: ${msg}" >&2
+  exit 1
+fi
+
+printf '%s\n' "$resp" | jq -r '
+  "IP: \(.ip)",
+  "Type: \(.type)",
+  "Continent: \(.continent)",
+  "Country: \(.country)",
+  "Region: \(.region)",
+  "City: \(.city)",
+  "Latitude: \(.latitude)",
+  "Longitude: \(.longitude)",
+  "Timezone: \(.timezone.id // \"N/A\")",
+  "ISP: \(.connection.isp // \"N/A\")",
+  "ASN: \(.connection.asn // \"N/A\")",
+  "Organization: \(.connection.org // \"N/A\")"
+'
