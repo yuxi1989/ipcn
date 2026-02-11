@@ -1,12 +1,12 @@
-# ipinfo
+# ipcn
 
 A tiny CLI to query IP/domain geolocation and ASN details.
 
 ## Usage
 
 ```bash
-./ipinfo 8.8.8.8
-./ipinfo example.com
+./ipcn 8.8.8.8
+./ipcn example.com
 ```
 
 ## Requirements
@@ -17,6 +17,6 @@ A tiny CLI to query IP/domain geolocation and ASN details.
 ## Release
 
 ```bash
-git tag v0.1.0
+git tag v0.2.0
 git push --tags
 ```

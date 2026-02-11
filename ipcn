@@ -13,11 +13,11 @@ fi
 
 usage() {
   cat <<'USAGE'
-Usage: ipinfo <ip-or-domain>
+Usage: ipcn <ip-or-domain>
 
 Examples:
-  ipinfo 8.8.8.8
-  ipinfo example.com
+  ipcn 8.8.8.8
+  ipcn example.com
 USAGE
 }
 
