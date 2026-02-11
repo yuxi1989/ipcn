@@ -13,6 +13,8 @@ A tiny CLI to query IP/domain geolocation and ASN details.
 
 - curl
 - jq
+- whois
+- dig
 
 ## Release
 

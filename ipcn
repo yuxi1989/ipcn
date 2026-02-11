@@ -1,19 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if ! command -v curl >/dev/null 2>&1; then
-  echo "Error: curl is required." >&2
-  exit 1
-fi
-
-if ! command -v jq >/dev/null 2>&1; then
-  echo "Error: jq is required." >&2
-  exit 1
-fi
-
 usage() {
   cat <<'USAGE'
-Usage: ipcn <ip-or-domain>
+Usage: ipcn <IP-or-domain>
 
 Examples:
   ipcn 8.8.8.8
@@ -21,37 +11,105 @@ Examples:
 USAGE
 }
 
+require_cmd() {
+  local cmd="$1"
+  local hint="$2"
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    echo "Error: missing $cmd. $hint" >&2
+    exit 1
+  fi
+}
+
+# Basic check for IPv4/IPv6 input.
+is_ip() {
+  local s="$1"
+  [[ "$s" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] && return 0
+  [[ "$s" =~ : ]] && return 0
+  return 1
+}
+
+resolve_domain() {
+  local d="$1"
+  local ip
+
+  ip="$(dig +short A "$d" | head -n 1 || true)"
+  if [ -z "$ip" ]; then
+    ip="$(dig +short AAAA "$d" | head -n 1 || true)"
+  fi
+
+  echo "$ip"
+}
+
 if [[ $# -ne 1 ]]; then
   usage
   exit 1
 fi
 
-query="$1"
+require_cmd curl "Install with Homebrew: brew install curl"
+require_cmd jq "Install with Homebrew: brew install jq"
+require_cmd whois "Install with Homebrew if needed: brew install whois"
+require_cmd dig "Install with Homebrew if needed: brew install bind"
 
-# ipwho.is supports both IPv4/IPv6 and domain names, and returns ASN fields.
-resp="$(curl -fsSL "https://ipwho.is/${query}")" || {
-  echo "Error: failed to query ipwho.is" >&2
+TARGET="$1"
+IP="$TARGET"
+DOMAIN=""
+
+if ! is_ip "$TARGET"; then
+  DOMAIN="$TARGET"
+  IP="$(resolve_domain "$DOMAIN")"
+  if [ -z "$IP" ]; then
+    echo "域名解析失败: $DOMAIN" >&2
+    exit 1
+  fi
+fi
+
+# Geo info in Chinese from ip-api.
+GEO="$(curl -fsS "http://ip-api.com/json/${IP}?lang=zh-CN")" || {
+  echo "查询失败: 无法请求 ip-api" >&2
   exit 1
 }
 
-ok="$(printf '%s' "$resp" | jq -r '.success // false')"
-if [[ "$ok" != "true" ]]; then
-  msg="$(printf '%s' "$resp" | jq -r '.message // "lookup failed"')"
-  echo "Error: ${msg}" >&2
+STATUS="$(echo "$GEO" | jq -r '.status // empty')"
+if [ "$STATUS" != "success" ]; then
+  MSG="$(echo "$GEO" | jq -r '.message // "未知错误"')"
+  echo "查询失败: $MSG" >&2
   exit 1
 fi
 
-printf '%s\n' "$resp" | jq -r '
-  "IP: \(.ip)",
-  "Type: \(.type)",
-  "Continent: \(.continent)",
-  "Country: \(.country)",
-  "Region: \(.region)",
-  "City: \(.city)",
-  "Latitude: \(.latitude)",
-  "Longitude: \(.longitude)",
-  "Timezone: \(.timezone.id // "N/A")",
-  "ISP: \(.connection.isp // "N/A")",
-  "ASN: \(.connection.asn // "N/A")",
-  "Organization: \(.connection.org // "N/A")"
-'
+COUNTRY="$(echo "$GEO" | jq -r '.country // "-"')"
+REGION="$(echo "$GEO" | jq -r '.regionName // "-"')"
+CITY="$(echo "$GEO" | jq -r '.city // "-"')"
+ISP="$(echo "$GEO" | jq -r '.isp // "-"')"
+ORG="$(echo "$GEO" | jq -r '.org // "-"')"
+AS_RAW="$(echo "$GEO" | jq -r '.as // "-"')"
+
+# ASN/BGP lookup from Team Cymru.
+CYMRU_LINE="$(whois -h whois.cymru.com " -v ${IP}" 2>/dev/null | tail -n 1 || true)"
+ASN="$(echo "$CYMRU_LINE" | awk -F'|' '{gsub(/ /,"",$1); print $1}' | sed 's/^AS//')"
+PREFIX="$(echo "$CYMRU_LINE" | awk -F'|' '{gsub(/^ +| +$/, "", $3); print $3}')"
+BGP_CC="$(echo "$CYMRU_LINE" | awk -F'|' '{gsub(/^ +| +$/, "", $4); print $4}')"
+
+CN="否"
+if [ "$COUNTRY" = "中国" ] || [ "$BGP_CC" = "CN" ]; then
+  CN="是"
+fi
+
+if [ -n "$DOMAIN" ]; then
+  echo "域名      : $DOMAIN"
+fi
+echo "IP        : $IP"
+echo "国家      : $COUNTRY"
+echo "省份      : $REGION"
+echo "城市      : $CITY"
+echo "是否国内  : $CN"
+echo "ISP       : $ISP"
+echo "组织      : $ORG"
+echo "AS(文本)  : $AS_RAW"
+
+if [ -n "${ASN:-}" ]; then
+  echo "ASN       : AS$ASN"
+fi
+
+if [ -n "${PREFIX:-}" ]; then
+  echo "BGP前缀   : $PREFIX"
+fi
