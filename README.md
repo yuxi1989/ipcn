@@ -70,4 +70,6 @@ Release guard:
 - `ipcn` relies on third-party network services (currently `ip-api.com` and Team Cymru whois).
 - Query results, availability, latency, and accuracy depend on those services and your network.
 - Third-party services may apply rate limits, blocks, or policy changes at any time.
+- `ip-api.com` free JSON endpoint is rate-limited (documented as 45 requests/minute per source IP); heavy overuse can trigger temporary blocks.
+- Team Cymru whois does not publish a fixed numeric limit, but abusive/high-volume usage may be null-routed or blocked.
 - Do not send sensitive data unless you accept the external service's terms and privacy practices.
