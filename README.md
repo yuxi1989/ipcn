@@ -46,6 +46,15 @@ git tag v0.2.5
 git push --tags
 ```
 
+## Signing Policy
+
+- All commits in this repository must be GPG-signed.
+- All release tags in this repository must be GPG-signed.
+- Local recommended git settings:
+  - `git config commit.gpgsign true`
+  - `git config tag.gpgsign true`
+  - `git config user.signingkey D2223998BC2A8C28`
+
 Version note:
 
 - `ipcn -v` will try to read the latest git tag automatically.
