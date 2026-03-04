@@ -248,6 +248,35 @@ apply_fields_json() {
   '
 }
 
+translate_api_message() {
+  local raw="$1"
+  local norm
+
+  if [[ "$OUTPUT_LANG" != "zh" ]]; then
+    echo "$raw"
+    return 0
+  fi
+
+  norm="$(printf '%s' "$raw" | tr '[:upper:]' '[:lower:]')"
+  case "$norm" in
+    "private range")
+      echo "私有地址范围（private range）"
+      ;;
+    "reserved range")
+      echo "保留地址范围（reserved range）"
+      ;;
+    "invalid query")
+      echo "查询参数无效（invalid query）"
+      ;;
+    "query limit reached")
+      echo "请求频率超限（query limit reached）"
+      ;;
+    *)
+      echo "$raw"
+      ;;
+  esac
+}
+
 query_one_ip_json() {
   local input="$1"
   local domain="$2"
@@ -263,8 +292,9 @@ query_one_ip_json() {
   local status
   status="$(echo "$geo" | jq -r '.status // empty')"
   if [[ "$status" != "success" ]]; then
-    local msg
-    msg="$(echo "$geo" | jq -r --arg fallback "$ERR_UNKNOWN" '.message // $fallback')"
+    local msg raw_msg
+    raw_msg="$(echo "$geo" | jq -r --arg fallback "$ERR_UNKNOWN" '.message // $fallback')"
+    msg="$(translate_api_message "$raw_msg")"
     jq -cn --arg input "$input" --arg domain "$domain" --arg ip "$ip" --arg error "$msg" \
       '{input:$input,domain:($domain|if .=="" then null else . end),ip:$ip,error:$error}'
     return 0
