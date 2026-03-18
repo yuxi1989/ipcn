@@ -70,6 +70,7 @@ Options:
   --ipv6            Resolve/query IPv6 only
 
 Examples:
+  ipcn
   ipcn 8.8.8.8
   ipcn example.com
   ipcn --all-ips example.com
@@ -95,6 +96,41 @@ is_ip() {
   [[ "$s" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] && return 0
   [[ "$s" =~ : ]] && return 0
   return 1
+}
+
+default_interface() {
+  route get default 2>/dev/null | awk '/interface:/{print $2; exit}'
+}
+
+collect_interface_ips() {
+  local iface="$1"
+  local family="$2"
+
+  if [[ -z "$iface" ]]; then
+    return 1
+  fi
+
+  if [[ "$family" == "4" || "$family" == "any" ]]; then
+    ifconfig "$iface" 2>/dev/null | awk '/inet /{print $2}' | grep -v '^127\.' || true
+  fi
+
+  if [[ "$family" == "6" || "$family" == "any" ]]; then
+    ifconfig "$iface" 2>/dev/null | awk '/inet6 /{print $2}' | grep -v '^fe80:' | grep -v '^::1$' || true
+  fi
+}
+
+public_ip_service_url() {
+  case "$FAMILY" in
+    4) echo "https://api.ipify.org" ;;
+    6) echo "https://api6.ipify.org" ;;
+    *) echo "https://api64.ipify.org" ;;
+  esac
+}
+
+detect_public_ip() {
+  local url
+  url="$(public_ip_service_url)"
+  curl -fsS --connect-timeout "$TIMEOUT" --max-time "$TIMEOUT" --retry "$RETRIES" "$url" 2>/dev/null || true
 }
 
 resolve_domain_ips() {
@@ -248,6 +284,25 @@ apply_fields_json() {
   '
 }
 
+self_query_json() {
+  local iface="$1"
+  local local_ips_json="$2"
+  local public_ip="$3"
+  local public_obj="$4"
+
+  jq -cn \
+    --arg iface "$iface" \
+    --argjson local_ips "$local_ips_json" \
+    --arg public_ip "$public_ip" \
+    --argjson public "$public_obj" \
+    '{
+      local_interface: ($iface | if . == "" then null else . end),
+      local_ips: $local_ips,
+      public_ip: ($public_ip | if . == "" then null else . end),
+      public: $public
+    }'
+}
+
 translate_api_message() {
   local raw="$1"
   local norm
@@ -378,6 +433,49 @@ print_text_result() {
   done
 }
 
+print_self_text_result() {
+  local iface="$1"
+  local -a local_ips=("${!2}")
+  local public_ip="$3"
+  local public_obj="$4"
+  local label_interface label_local_ip label_public_ip
+
+  if [[ "$OUTPUT_LANG" == "en" ]]; then
+    label_interface="Interface"
+    label_local_ip="Local IP"
+    label_public_ip="Public IP"
+  else
+    label_interface="本地接口"
+    label_local_ip="本地IP"
+    label_public_ip="公网IP"
+  fi
+
+  if [[ -n "$iface" ]]; then
+    printf '%-10s: %s\n' "$label_interface" "$iface"
+  fi
+
+  if [[ ${#local_ips[@]} -gt 0 ]]; then
+    local idx=0
+    for ip in "${local_ips[@]}"; do
+      if [[ "$idx" -eq 0 ]]; then
+        printf '%-10s: %s\n' "$label_local_ip" "$ip"
+      else
+        printf '%-10s: %s\n' "" "$ip"
+      fi
+      idx=$((idx + 1))
+    done
+  fi
+
+  if [[ -n "$public_ip" ]]; then
+    printf '%-10s: %s\n' "$label_public_ip" "$public_ip"
+  fi
+
+  if [[ -n "$public_obj" && "$(echo "$public_obj" | jq -r 'has("error")')" != "true" ]]; then
+    echo
+    print_text_result "$public_obj"
+  fi
+}
+
 OUTPUT_JSON=0
 ALL_IPS=0
 FAMILY="any"
@@ -395,6 +493,7 @@ ERR_RESOLVE_FAILED="域名解析失败"
 TXT_YES="是"
 TXT_NO="否"
 INPUT_FILE=""
+SELF_QUERY=0
 declare -a TARGETS=()
 
 while [[ $# -gt 0 ]]; do
@@ -535,8 +634,7 @@ if [[ -n "$INPUT_FILE" ]]; then
 fi
 
 if [[ ${#TARGETS[@]} -eq 0 ]]; then
-  usage
-  exit 1
+  SELF_QUERY=1
 fi
 
 require_cmd curl "Install with Homebrew: brew install curl"
@@ -544,9 +642,45 @@ require_cmd jq "Install with Homebrew: brew install jq"
 require_cmd whois "Install with Homebrew if needed: brew install whois"
 require_cmd dig "Install with Homebrew if needed: brew install bind"
 
+if [[ "$SELF_QUERY" -eq 1 ]]; then
+  require_cmd ifconfig "This command is required to detect local interface IPs"
+  require_cmd route "This command is required to detect the default route interface"
+fi
+
 declare -a JSON_ROWS=()
 printed=0
 failures=0
+
+if [[ "$SELF_QUERY" -eq 1 ]]; then
+  iface="$(default_interface)"
+  declare -a self_ips=()
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && self_ips+=("$line")
+  done < <(collect_interface_ips "$iface" "$FAMILY")
+
+  public_ip="$(detect_public_ip)"
+  public_obj=""
+  if [[ -n "$public_ip" ]]; then
+    public_obj="$(query_one_ip_json "self" "" "$public_ip" | jq 'del(.input)')"
+  fi
+
+  if [[ "$OUTPUT_JSON" -eq 1 ]]; then
+    if [[ ${#self_ips[@]} -gt 0 ]]; then
+      local_ips_json="$(printf '%s\n' "${self_ips[@]}" | jq -R . | jq -s '.')"
+    else
+      local_ips_json='[]'
+    fi
+    if [[ -z "$public_obj" ]]; then
+      public_obj='null'
+    fi
+    self_obj="$(self_query_json "$iface" "$local_ips_json" "$public_ip" "$public_obj")"
+    printf '%s\n' "$self_obj"
+  else
+    print_self_text_result "$iface" self_ips[@] "$public_ip" "$public_obj"
+  fi
+
+  exit 0
+fi
 
 for target in "${TARGETS[@]}"; do
   declare -a ips=()

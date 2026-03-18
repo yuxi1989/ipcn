@@ -9,6 +9,7 @@ Related project: [homebrew-ipcn](https://github.com/yuxi1989/homebrew-ipcn)
 ## Usage
 
 ```bash
+./ipcn
 ./ipcn 8.8.8.8
 ./ipcn example.com
 ./ipcn --all-ips example.com
@@ -22,6 +23,7 @@ Related project: [homebrew-ipcn](https://github.com/yuxi1989/homebrew-ipcn)
 
 - `-v, --version`: show version
 - `-h, --help`: show help
+- no argument: query current local LAN IPs and current public IP
 - `--lang <zh|en>`: output language (default: auto-detect from system locale)
 - `--timeout <sec>`: request timeout seconds (default `10`)
 - `--retries <n>`: retry count for API requests (default `1`)
